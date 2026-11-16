@@ -1,0 +1,48 @@
+# Dependencies & Package Manager
+node_modules/
+.pnp
+.pnp.js
+.bun/
+
+# Build Outputs & TypeScript Cache
+dist/
+dist-local/
+dist-local-old-*/
+*.tsbuildinfo
+
+# Environment & Runtime Data (.env.server & .env.arena stay tracked as non-secret mode configs)
+.env
+.env.local
+.env.*.local
+data/
+uploads/
+*.part
+
+# Serverless & Hosting Local State
+.vercel/
+.netlify/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor, IDE & Tooling Clutter
+.vscode/
+.idea/
+*.swp
+*.swo
+anti-slop-repo/
+.agents/
+skills/
+antislop.md
+*.tmp
+*.bak
+
+# OS Metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
