@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
@@ -30,18 +30,24 @@ const ScrollManager: React.FC = () => {
 };
 
 export const App: React.FC = () => {
+  const [hideChrome, setHideChrome] = useState<boolean>(false);
+
   return (
     <BrowserRouter>
       <ScrollManager />
       <div className="app-shell">
-        <a href="#beranda" className="skip-link">
-          Lewati ke konten utama
-        </a>
-        <Navbar appMode={APP_MODE} />
+        {!hideChrome && (
+          <>
+            <a href="#beranda" className="skip-link">
+              Lewati ke konten utama
+            </a>
+            <Navbar appMode={APP_MODE} />
+          </>
+        )}
         {APP_MODE === 'local' ? (
           <Routes>
-            <Route path="/" element={<LocalGamePage />} />
-            <Route path="*" element={<LocalGamePage />} />
+            <Route path="/" element={<LocalGamePage onPlayingChange={setHideChrome} />} />
+            <Route path="*" element={<LocalGamePage onPlayingChange={setHideChrome} />} />
           </Routes>
         ) : (
           <Routes>
@@ -52,7 +58,7 @@ export const App: React.FC = () => {
             <Route path="*" element={<LandingPage />} />
           </Routes>
         )}
-        <Footer appMode={APP_MODE} />
+        {!hideChrome && <Footer appMode={APP_MODE} />}
       </div>
     </BrowserRouter>
   );
