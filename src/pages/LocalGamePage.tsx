@@ -79,11 +79,11 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
   const [sessionState, setSessionState] = useState<SessionState>('locked');
 
   useEffect(() => {
-    onPlayingChange?.(sessionState === 'playing');
+    onPlayingChange?.(true);
     return () => {
       onPlayingChange?.(false);
     };
-  }, [onPlayingChange, sessionState]);
+  }, [onPlayingChange]);
   const [sessionName, setSessionName] = useState<string>('Sesi Sosialisasi Forum Anak');
   const [teamAName, setTeamAName] = useState<string>('Tim A');
   const [teamBName, setTeamBName] = useState<string>('Tim B');
@@ -102,6 +102,8 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
   const [scoreB, setScoreB] = useState<number>(0);
   const [streakA, setStreakA] = useState<number>(0);
   const [streakB, setStreakB] = useState<number>(0);
+  const [bestStreakA, setBestStreakA] = useState<number>(0);
+  const [bestStreakB, setBestStreakB] = useState<number>(0);
   const [correctCountA, setCorrectCountA] = useState<number>(0);
   const [correctCountB, setCorrectCountB] = useState<number>(0);
   const [history, setHistory] = useState<RoundOutcome[]>([]);
@@ -168,19 +170,35 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
       const pointsA = aCorrect ? 100 : 0;
       const pointsB = bCorrect ? 100 : 0;
 
-      if (aCorrect) {
-        setScoreA((prev) => prev + 100);
-        setCorrectCountA((prev) => prev + 1);
-        setStreakA((prev) => prev + 1);
-      } else {
+      if (finalA !== null) {
+        if (aCorrect) {
+          setScoreA((prev) => prev + 100);
+          setCorrectCountA((prev) => prev + 1);
+          setStreakA((prev) => {
+            const next = prev + 1;
+            setBestStreakA((best) => Math.max(best, next));
+            return next;
+          });
+        } else {
+          setStreakA(0);
+        }
+      } else if (byTimeout) {
         setStreakA(0);
       }
 
-      if (bCorrect) {
-        setScoreB((prev) => prev + 100);
-        setCorrectCountB((prev) => prev + 1);
-        setStreakB((prev) => prev + 1);
-      } else {
+      if (finalB !== null) {
+        if (bCorrect) {
+          setScoreB((prev) => prev + 100);
+          setCorrectCountB((prev) => prev + 1);
+          setStreakB((prev) => {
+            const next = prev + 1;
+            setBestStreakB((best) => Math.max(best, next));
+            return next;
+          });
+        } else {
+          setStreakB(0);
+        }
+      } else if (byTimeout) {
         setStreakB(0);
       }
 
@@ -246,26 +264,20 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
         return;
       }
 
-      if (evaluated) return;
+      if (evaluated || choiceA !== null || choiceB !== null) return;
 
       const labelText = choice === 'A' ? 'Benar' : 'Salah';
 
       if (team === 'A') {
-        if (choiceA !== null) return;
         soundEngine.playBuzzer(true);
         setChoiceA(choice);
-        appendLog(`[${sourceLabel}] ${teamAName} menjawab ${labelText} (${choice})`);
-        if (choiceB !== null) {
-          evaluateRound(choice, choiceB, false);
-        }
+        appendLog(`[${sourceLabel}] ${teamAName} tercepat menjawab ${labelText} (${choice})`);
+        evaluateRound(choice, null, false);
       } else {
-        if (choiceB !== null) return;
         soundEngine.playBuzzer(false);
         setChoiceB(choice);
-        appendLog(`[${sourceLabel}] ${teamBName} menjawab ${labelText} (${choice})`);
-        if (choiceA !== null) {
-          evaluateRound(choiceA, choice, false);
-        }
+        appendLog(`[${sourceLabel}] ${teamBName} tercepat menjawab ${labelText} (${choice})`);
+        evaluateRound(null, choice, false);
       }
     },
     [addToast, appendLog, choiceA, choiceB, evaluateRound, evaluated, sessionState, teamAName, teamBName]
@@ -325,6 +337,8 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
     setScoreB(0);
     setStreakA(0);
     setStreakB(0);
+    setBestStreakA(0);
+    setBestStreakB(0);
     setCorrectCountA(0);
     setCorrectCountB(0);
     setHistory([]);
@@ -356,9 +370,9 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
   };
 
   const handleNextQuestion = useCallback(() => {
-    soundEngine.playClick();
     setAutoNextLeft(AUTO_NEXT_SECONDS);
     if (questionIdx < activeQuestions.length - 1) {
+      soundEngine.playClick();
       setQuestionIdx((prev) => prev + 1);
       setChoiceA(null);
       setChoiceB(null);
@@ -366,9 +380,10 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
       setTimedOutRound(false);
       setTimeLeft(timerDuration);
     } else {
+      soundEngine.playVictoryCheer();
       setSessionState('finished');
       appendLog('[Admin] Semua 10 soal acak selesai.');
-      addToast('Permainan selesai! Cek podium pemenang.', 'success');
+      addToast('Permainan selesai! Penonton bersorak di podium pemenang.', 'success');
     }
   }, [activeQuestions.length, addToast, appendLog, questionIdx, timerDuration]);
 
@@ -549,37 +564,60 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
     return 'is-dimmed-tile';
   };
 
-  const isFullPagePlaying = sessionState === 'playing';
+  const accuracyA = Math.round((correctCountA / totalQuestions) * 100);
+  const accuracyB = Math.round((correctCountB / totalQuestions) * 100);
 
   return (
-    <main className={isFullPagePlaying ? 'qz-fullpage-main' : 'game-main minigame-shell'}>
-      <div className={isFullPagePlaying ? 'qz-fullpage-wrap' : 'container'}>
-        {/* STATE 1: LOBI SETUP MINIGAME */}
+    <main className="qz-fullpage-main">
+      <div className="qz-fullpage-wrap">
+        {/* STATE 1: LOBI SETUP MINIGAME (ARCADE PRE-MATCH STAGE) */}
         {sessionState === 'locked' && (
-          <>
-            <header className="mg-topbar">
-              <div className="mg-topbar-left">
-                <span className="mg-mode-pill">Arena Minigame Lokal</span>
+          <section
+            ref={stageRef}
+            className="qz-arcade-stage is-fullpage qz-lobby-stage"
+            aria-label="Lobi Pengaturan Minigame"
+          >
+            {/* Top Arcade HUD Bar */}
+            <div className="qz-hud-bar">
+              <div className="qz-hud-team-group">
+                <span className="qz-hud-pill qz-rank-pill">LOBI ARENA</span>
+                <span className="qz-hud-pill">10 Soal Acak</span>
+                <span className="qz-hud-pill">Siapa Cepat Dia Jawab</span>
+                <span className="qz-hud-pill">Benar +100 • Salah/Habis 0</span>
               </div>
-              <div className="mg-topbar-actions">
+
+              <div className="qz-hud-team-group qz-hud-right">
                 <button
                   type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={() => setSoundEnabled(soundEngine.toggle())}
+                  className="qz-icon-btn"
+                  onClick={() => setShowAdvancedSync((prev) => !prev)}
                 >
-                  <SoundStateIcon active={soundEnabled} size={16} />
-                  <span>{soundEnabled ? 'Suara Nyala' : 'Suara Mati'}</span>
+                  {showAdvancedSync ? 'Tutup Server Soal' : 'Sync Soal Server'}
                 </button>
                 <button
                   type="button"
-                  className="btn btn-outline btn-sm"
+                  className="qz-icon-btn"
+                  title={soundEnabled ? 'Matikan Suara' : 'Nyalakan Suara'}
+                  aria-label="Toggle suara"
+                  onClick={() => setSoundEnabled(soundEngine.toggle())}
+                >
+                  <SoundStateIcon active={soundEnabled} size={16} />
+                  <span style={{ marginLeft: '0.35rem' }}>
+                    {soundEnabled ? 'Suara Nyala' : 'Suara Mati'}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="qz-icon-btn"
+                  title="Koneksi ESP32"
+                  aria-label="Pengaturan ESP32"
                   onClick={() => setHwModalOpen(true)}
                 >
                   <span
                     className={`hw-dot ${bridgeOnline || serialConnected ? 'is-online' : ''}`}
                     aria-hidden="true"
                   />
-                  <span>
+                  <span style={{ marginLeft: '0.35rem' }}>
                     {bridgeOnline
                       ? 'ESP32 WiFi Aktif'
                       : serialConnected
@@ -587,26 +625,145 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
                         : 'Koneksi ESP32'}
                   </span>
                 </button>
+                <button
+                  type="button"
+                  className="qz-icon-btn"
+                  title="Layar Penuh"
+                  aria-label="Mode layar penuh"
+                  onClick={handleToggleFullscreen}
+                >
+                  [ ]
+                </button>
               </div>
-            </header>
+            </div>
 
-            <section className="mg-lobby-card" aria-label="Lobi Pengaturan Minigame">
-              <div className="mg-lobby-hero">
+            {/* Center Pre-Game Banner & Session Settings (matches Question Card position) */}
+            <div className="qz-question-wrap">
+              <div className="qz-q-counter-pill">PERSIAPAN PERTANDINGAN • DUAL-TEAM</div>
+              <div className="qz-question-card qz-lobby-hero-card">
+                <h1 className="qz-question-text">
+                  Arena Kuis Cepat Tepat Hak Anak — {teamAName} vs {teamBName}
+                </h1>
+                <p className="qz-lobby-sub">
+                  Pilih klaster materi, sesuaikan nama tim &amp; waktu hitung mundur. Begitu dimulai,
+                  layar otomatis penuh dan hanya <strong>1 tim tercepat</strong> yang dapat menjawab
+                  tiap soal.
+                </p>
+
+                <div className="qz-lobby-config-bar">
+                  <div className="qz-config-field">
+                    <label htmlFor="session-name-input" className="qz-field-label">
+                      Nama Sesi Pertandingan
+                    </label>
+                    <input
+                      id="session-name-input"
+                      type="text"
+                      className="qz-arcade-input"
+                      value={sessionName}
+                      onChange={(e) => setSessionName(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="qz-config-field">
+                    <span className="qz-field-label">Timer Hitung Mundur per Soal</span>
+                    <div
+                      className="qz-timer-pills"
+                      role="radiogroup"
+                      aria-label="Pilih durasi timer per soal"
+                    >
+                      {TIMER_PRESETS.map((sec) => {
+                        const active = timerDuration === sec;
+                        return (
+                          <button
+                            key={sec}
+                            type="button"
+                            role="radio"
+                            aria-checked={active}
+                            className={`qz-timer-pill-btn ${active ? 'is-active' : ''}`}
+                            onClick={() => {
+                              soundEngine.playClick();
+                              setTimerDuration(sec);
+                            }}
+                          >
+                            {sec} Detik
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Split 2-Side Team Setup (Tim A Left vs Tim B Right — seamless with Playing layout) */}
+            <div className="qz-split-arena">
+              {/* SISI TIM A */}
+              <section className="qz-side-panel qz-side-a" aria-label="Pengaturan Kubu Tim A">
+                <div className="qz-side-header">
+                  <div className="qz-side-title">
+                    <TeamMascotIcon team="A" size={22} />
+                    <span>Kubu Kiri • {teamAName}</span>
+                  </div>
+                  <span className="qz-side-status is-locked">Siap di Sisi Kiri</span>
+                </div>
+
                 <div>
-                  <h1 className="mg-lobby-title">Lobi Minigame Dual-Team (Tim A vs Tim B)</h1>
-                  <p className="mg-lobby-desc">
-                    Pilih klaster, atur timer per soal, dan mulai pertandingan. Kedua sisi layar
-                    akan aktif sebagai arena kuis interaktif dengan <strong>10 soal acak Benar/Salah</strong>.
-                  </p>
+                  <label htmlFor="team-a-input" className="qz-field-label">
+                    Nama Tim A (Sisi Kiri)
+                  </label>
+                  <input
+                    id="team-a-input"
+                    type="text"
+                    className="qz-arcade-input"
+                    value={teamAName}
+                    onChange={(e) => setTeamAName(e.target.value)}
+                  />
                 </div>
-                <div className="mg-rule-chips" aria-label="Aturan permainan">
-                  <span className="mg-rule-chip">10 Soal Acak</span>
-                  <span className="mg-rule-chip">Benar = +100 Poin</span>
-                  <span className="mg-rule-chip">Salah / Habis Waktu = 0</span>
-                </div>
+              </section>
+
+              {/* Center VS Divider */}
+              <div className="qz-vs-divider" aria-hidden="true">
+                <span className="qz-vs-circle">VS</span>
               </div>
 
-              <div className="mg-lobby-klaster-grid" role="radiogroup" aria-label="Pilih Klaster">
+              {/* SISI TIM B */}
+              <section className="qz-side-panel qz-side-b" aria-label="Pengaturan Kubu Tim B">
+                <div className="qz-side-header">
+                  <div className="qz-side-title">
+                    <TeamMascotIcon team="B" size={22} />
+                    <span>Kubu Kanan • {teamBName}</span>
+                  </div>
+                  <span className="qz-side-status is-win">Siap di Sisi Kanan</span>
+                </div>
+
+                <div>
+                  <label htmlFor="team-b-input" className="qz-field-label">
+                    Nama Tim B (Sisi Kanan)
+                  </label>
+                  <input
+                    id="team-b-input"
+                    type="text"
+                    className="qz-arcade-input"
+                    value={teamBName}
+                    onChange={(e) => setTeamBName(e.target.value)}
+                  />
+                </div>
+              </section>
+            </div>
+
+            {/* 5 Klaster Selection Grid (Tactile 3D Arcade Cards) */}
+            <div className="qz-klaster-section">
+              <div className="qz-klaster-head">
+                <span className="qz-field-label">Pilih Klaster Pertandingan (10 Soal Acak)</span>
+                <span className="qz-bank-badge">
+                  Bank Soal {currentKlaster.code}:{' '}
+                  {remoteForKlaster.length > 0
+                    ? `${remoteForKlaster.length} Server (${questionSource}) + ${currentKlaster.questions.length} Lokal`
+                    : `${currentKlaster.questions.length} Soal Lokal Siap Diacak`}
+                </span>
+              </div>
+
+              <div className="qz-klaster-grid" role="radiogroup" aria-label="Pilih Klaster">
                 {KLASTER_DATA.map((k) => {
                   const isSelected = k.id === klasterId;
                   return (
@@ -615,134 +772,68 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
                       type="button"
                       role="radio"
                       aria-checked={isSelected}
-                      className={`mg-klaster-tile ${isSelected ? 'is-selected' : ''}`}
+                      className={`qz-klaster-tile ${isSelected ? 'is-selected' : ''}`}
                       onClick={() => {
                         soundEngine.playClick();
                         setKlasterId(k.id);
                       }}
                     >
-                      <span className="mg-tile-code">{k.code}</span>
-                      <span className="mg-tile-title">{k.shortTitle}</span>
-                      <span className="mg-tile-theme">{k.stageTheme.name}</span>
+                      <div className="qz-klaster-tile-top">
+                        <span className="qz-klaster-code">{k.code}</span>
+                        <span className="qz-klaster-count">{k.questions.length} Soal</span>
+                      </div>
+                      <span className="qz-klaster-title">{k.shortTitle}</span>
+                      <span className="qz-klaster-theme">{k.stageTheme.name}</span>
                     </button>
                   );
                 })}
               </div>
+            </div>
 
-              <div className="mg-lobby-form-grid">
-                <div>
-                  <label htmlFor="session-name-input" className="field-label">
-                    Nama Sesi
-                  </label>
+            {showAdvancedSync && (
+              <div className="qz-sync-drawer">
+                <label htmlFor="sync-api-url" className="qz-field-label">
+                  URL Server Admin API &amp; Endpoint ESP32 LAN: <code>{lanEndpoint}</code>
+                </label>
+                <div className="qz-sync-row">
                   <input
-                    id="session-name-input"
-                    type="text"
-                    className="materi-search-input w-full"
-                    value={sessionName}
-                    onChange={(e) => setSessionName(e.target.value)}
+                    id="sync-api-url"
+                    type="url"
+                    className="qz-arcade-input"
+                    placeholder="https://sipar.fragma.my.id"
+                    value={serverUrl}
+                    onChange={(e) => setServerUrl(e.target.value)}
                   />
-                </div>
-
-                <div>
-                  <label htmlFor="timer-duration-select" className="field-label">
-                    Timer per Soal
-                  </label>
-                  <select
-                    id="timer-duration-select"
-                    className="klaster-select-input w-full"
-                    value={timerDuration}
-                    onChange={(e) => setTimerDuration(Number.parseInt(e.target.value, 10))}
-                  >
-                    {TIMER_PRESETS.map((sec) => (
-                      <option key={sec} value={sec}>
-                        {sec} Detik / Soal
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor="team-a-input" className="field-label">
-                    Nama Tim A (Kiri)
-                  </label>
-                  <input
-                    id="team-a-input"
-                    type="text"
-                    className="materi-search-input w-full"
-                    value={teamAName}
-                    onChange={(e) => setTeamAName(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="team-b-input" className="field-label">
-                    Nama Tim B (Kanan)
-                  </label>
-                  <input
-                    id="team-b-input"
-                    type="text"
-                    className="materi-search-input w-full"
-                    value={teamBName}
-                    onChange={(e) => setTeamBName(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="mg-lobby-footer">
-                <div className="mg-lobby-meta">
                   <button
                     type="button"
-                    className="btn btn-outline btn-sm"
-                    onClick={() => setShowAdvancedSync((prev) => !prev)}
+                    className="qz-arcade-btn qz-btn-secondary"
+                    disabled={syncingQuestions}
+                    onClick={() => void handleSyncQuestions(false)}
                   >
-                    {showAdvancedSync ? 'Tutup Sinkronisasi Server' : 'Sinkronisasi Soal Server'}
+                    {syncingQuestions ? 'Menarik Soal...' : 'Tarik Soal dari Server'}
                   </button>
-                  <span className="source-indicator">
-                    Bank soal {currentKlaster.code}:{' '}
-                    {remoteForKlaster.length > 0
-                      ? `${remoteForKlaster.length} server (${questionSource}) + ${currentKlaster.questions.length} lokal`
-                      : `${currentKlaster.questions.length} lokal`}
-                  </span>
                 </div>
+              </div>
+            )}
 
-                <button
-                  type="button"
-                  className="btn btn-primary mg-start-btn"
-                  onClick={handleStartSession}
-                >
-                  Mulai Minigame (10 Soal Acak)
-                </button>
+            {/* Bottom Launch Bar */}
+            <div className="qz-bottom-bar qz-lobby-bottom">
+              <div className="qz-lobby-ready-note">
+                <span>
+                  Target: <strong>{currentKlaster.code} ({currentKlaster.shortTitle})</strong> •{' '}
+                  <strong>{timerDuration} Detik/Soal</strong> • Auto-Next 3 Detik
+                </span>
               </div>
 
-              {showAdvancedSync && (
-                <div className="mg-sync-drawer">
-                  <div className="admin-sync-input-wrap">
-                    <label htmlFor="sync-api-url" className="field-label">
-                      URL Server Admin API &amp; Endpoint ESP32 LAN: <code>{lanEndpoint}</code>
-                    </label>
-                    <div className="materi-toolbar" style={{ marginBottom: 0 }}>
-                      <input
-                        id="sync-api-url"
-                        type="url"
-                        className="materi-search-input"
-                        placeholder="https://sipar.fragma.my.id"
-                        value={serverUrl}
-                        onChange={(e) => setServerUrl(e.target.value)}
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        disabled={syncingQuestions}
-                        onClick={() => void handleSyncQuestions(false)}
-                      >
-                        {syncingQuestions ? 'Menarik Soal...' : 'Sync Soal dari Server'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </section>
-          </>
+              <button
+                type="button"
+                className="qz-arcade-btn qz-btn-launch"
+                onClick={handleStartSession}
+              >
+                Mulai Pertandingan (10 Soal Acak) →
+              </button>
+            </div>
+          </section>
         )}
 
         {/* STATE 2: ARENA QUIZIZZ 2-SISI (TIM A KIRI VS TIM B KANAN) */}
@@ -843,23 +934,23 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
                   <span
                     className={`qz-side-status ${
                       evaluated
-                        ? aCorrectRound
-                          ? 'is-win'
-                          : 'is-miss'
-                        : choiceA
-                          ? 'is-locked'
+                        ? choiceA !== null
+                          ? aCorrectRound
+                            ? 'is-win'
+                            : 'is-miss'
                           : ''
+                        : ''
                     }`}
                   >
                     {!evaluated
-                      ? choiceA
-                        ? 'Terkunci'
-                        : 'Pilih Jawaban'
-                      : aCorrectRound
-                        ? 'Benar +100'
-                        : choiceA === null
+                      ? 'Siap Menjawab'
+                      : choiceA !== null
+                        ? aCorrectRound
+                          ? 'Tercepat • Benar +100'
+                          : 'Tercepat • Salah +0'
+                        : timedOutRound
                           ? 'Waktu Habis +0'
-                          : 'Salah +0'}
+                          : 'Kalah Cepat'}
                   </span>
                 </div>
 
@@ -867,7 +958,7 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
                   <button
                     type="button"
                     className={`qz-answer-tile qz-tile-true ${renderTileState(choiceA, 'A')}`}
-                    disabled={choiceA !== null || evaluated}
+                    disabled={choiceA !== null || choiceB !== null || evaluated}
                     onClick={() => handleTeamChoice('A', 'A', 'Klik')}
                   >
                     <span className="qz-tile-key">[Q]</span>
@@ -875,7 +966,7 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
                     {evaluated && correctLetter === 'A' && (
                       <span className="qz-tile-badge">Kunci</span>
                     )}
-                    {!evaluated && choiceA === 'A' && (
+                    {evaluated && choiceA === 'A' && (
                       <span className="qz-tile-badge">Dipilih</span>
                     )}
                   </button>
@@ -883,7 +974,7 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
                   <button
                     type="button"
                     className={`qz-answer-tile qz-tile-false ${renderTileState(choiceA, 'B')}`}
-                    disabled={choiceA !== null || evaluated}
+                    disabled={choiceA !== null || choiceB !== null || evaluated}
                     onClick={() => handleTeamChoice('A', 'B', 'Klik')}
                   >
                     <span className="qz-tile-key">[W]</span>
@@ -891,7 +982,7 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
                     {evaluated && correctLetter === 'B' && (
                       <span className="qz-tile-badge">Kunci</span>
                     )}
-                    {!evaluated && choiceA === 'B' && (
+                    {evaluated && choiceA === 'B' && (
                       <span className="qz-tile-badge">Dipilih</span>
                     )}
                   </button>
@@ -913,23 +1004,23 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
                   <span
                     className={`qz-side-status ${
                       evaluated
-                        ? bCorrectRound
-                          ? 'is-win'
-                          : 'is-miss'
-                        : choiceB
-                          ? 'is-locked'
+                        ? choiceB !== null
+                          ? bCorrectRound
+                            ? 'is-win'
+                            : 'is-miss'
                           : ''
+                        : ''
                     }`}
                   >
                     {!evaluated
-                      ? choiceB
-                        ? 'Terkunci'
-                        : 'Pilih Jawaban'
-                      : bCorrectRound
-                        ? 'Benar +100'
-                        : choiceB === null
+                      ? 'Siap Menjawab'
+                      : choiceB !== null
+                        ? bCorrectRound
+                          ? 'Tercepat • Benar +100'
+                          : 'Tercepat • Salah +0'
+                        : timedOutRound
                           ? 'Waktu Habis +0'
-                          : 'Salah +0'}
+                          : 'Kalah Cepat'}
                   </span>
                 </div>
 
@@ -937,7 +1028,7 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
                   <button
                     type="button"
                     className={`qz-answer-tile qz-tile-true ${renderTileState(choiceB, 'A')}`}
-                    disabled={choiceB !== null || evaluated}
+                    disabled={choiceA !== null || choiceB !== null || evaluated}
                     onClick={() => handleTeamChoice('B', 'A', 'Klik')}
                   >
                     <span className="qz-tile-key">[O]</span>
@@ -945,7 +1036,7 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
                     {evaluated && correctLetter === 'A' && (
                       <span className="qz-tile-badge">Kunci</span>
                     )}
-                    {!evaluated && choiceB === 'A' && (
+                    {evaluated && choiceB === 'A' && (
                       <span className="qz-tile-badge">Dipilih</span>
                     )}
                   </button>
@@ -953,7 +1044,7 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
                   <button
                     type="button"
                     className={`qz-answer-tile qz-tile-false ${renderTileState(choiceB, 'B')}`}
-                    disabled={choiceB !== null || evaluated}
+                    disabled={choiceA !== null || choiceB !== null || evaluated}
                     onClick={() => handleTeamChoice('B', 'B', 'Klik')}
                   >
                     <span className="qz-tile-key">[P]</span>
@@ -961,7 +1052,7 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
                     {evaluated && correctLetter === 'B' && (
                       <span className="qz-tile-badge">Kunci</span>
                     )}
-                    {!evaluated && choiceB === 'B' && (
+                    {evaluated && choiceB === 'B' && (
                       <span className="qz-tile-badge">Dipilih</span>
                     )}
                   </button>
@@ -973,21 +1064,9 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
             {!evaluated ? (
               <div className="qz-waiting-bar" role="status">
                 <span>
-                  {choiceA && !choiceB
-                    ? `${teamAName} sudah mengunci jawaban. Menunggu ${teamBName}...`
-                    : !choiceA && choiceB
-                      ? `${teamBName} sudah mengunci jawaban. Menunggu ${teamAName}...`
-                      : 'Tim A dan Tim B wajib menjawab Benar/Salah sebelum waktu habis.'}
+                  Siapa cepat dia yang menjawab! Hanya 1 tim tercepat yang dapat menjawab soal ini
+                  sebelum waktu habis.
                 </span>
-                {(choiceA !== null || choiceB !== null) && (
-                  <button
-                    type="button"
-                    className="qz-force-eval-btn"
-                    onClick={() => evaluateRound(choiceA, choiceB, true)}
-                  >
-                    Akhiri Timer &amp; Evaluasi
-                  </button>
-                )}
               </div>
             ) : (
               <div
@@ -999,12 +1078,11 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
               >
                 <div className="qz-feedback-copy">
                   <div className="qz-feedback-headline">
-                    {timedOutRound ? 'Waktu Habis! ' : ''}
-                    Kunci: {correctLetter === 'A' ? 'Benar' : 'Salah'} — {teamAName} (
-                    {choiceToLabel(choiceA, currentQuestion.options)}: {aCorrectRound ? '+100' : '0'})
-                    {' | '}
-                    {teamBName} ({choiceToLabel(choiceB, currentQuestion.options)}:{' '}
-                    {bCorrectRound ? '+100' : '0'})
+                    {timedOutRound
+                      ? `Waktu Habis! Kunci: ${correctLetter === 'A' ? 'Benar' : 'Salah'} — Tidak ada tim yang menjawab (0 Poin)`
+                      : choiceA !== null
+                        ? `Kunci: ${correctLetter === 'A' ? 'Benar' : 'Salah'} — ${teamAName} tercepat (${choiceToLabel(choiceA, currentQuestion.options)}: ${aCorrectRound ? '+100 Poin' : '0 Poin'})`
+                        : `Kunci: ${correctLetter === 'A' ? 'Benar' : 'Salah'} — ${teamBName} tercepat (${choiceToLabel(choiceB, currentQuestion.options)}: ${bCorrectRound ? '+100 Poin' : '0 Poin'})`}
                   </div>
                   <div className="qz-feedback-exp">{currentQuestion.explanation}</div>
                 </div>
@@ -1053,99 +1131,421 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
           </div>
         )}
 
-        {/* STATE 3: PODIUM HASIL AKHIR */}
+        {/* STATE 3: PODIUM HASIL AKHIR (3D STEPPED PODIUM + PENONTON BERSORAK) */}
         {sessionState === 'finished' && (
-          <section className="mg-podium-card" role="status" aria-label="Hasil Akhir Minigame">
-            <div className="summary-winner-banner">
-              <span className="summary-badge">
-                {currentKlaster.code} • {totalQuestions} Soal Selesai
-              </span>
-              <h1 className="mg-podium-title">{winnerSummary}</h1>
-              <p className="reader-summary">
-                Pertandingan <strong>{sessionName}</strong> telah selesai.
-              </p>
+          <section
+            ref={stageRef}
+            className="qz-arcade-stage is-fullpage qz-podium-stage"
+            role="status"
+            aria-label="Hasil Akhir Minigame"
+          >
+            {/* Top Game HUD */}
+            <div className="qz-hud-bar">
+              <div className="qz-hud-team-group">
+                <span className="qz-hud-pill qz-rank-pill">{aRankLabel}</span>
+                <span className="qz-hud-pill qz-score-pill-a">
+                  {teamAName}: {scoreA}
+                </span>
+              </div>
+
+              <div className="qz-hud-center">
+                <span className="qz-klaster-chip">
+                  {currentKlaster.code}: {currentKlaster.shortTitle}
+                </span>
+                <button
+                  type="button"
+                  className="qz-cheer-trigger-btn"
+                  onClick={() => soundEngine.playVictoryCheer()}
+                >
+                  Bunyikan Sorak Penonton
+                </button>
+              </div>
+
+              <div className="qz-hud-team-group qz-hud-right">
+                <span className="qz-hud-pill qz-score-pill-b">
+                  {teamBName}: {scoreB}
+                </span>
+                <span className="qz-hud-pill qz-rank-pill">{bRankLabel}</span>
+                <button
+                  type="button"
+                  className="qz-icon-btn"
+                  title={soundEnabled ? 'Matikan Suara' : 'Nyalakan Suara'}
+                  aria-label="Toggle suara"
+                  onClick={() => setSoundEnabled(soundEngine.toggle())}
+                >
+                  <SoundStateIcon active={soundEnabled} size={16} />
+                </button>
+                <button
+                  type="button"
+                  className="qz-icon-btn"
+                  title="Koneksi ESP32"
+                  aria-label="Pengaturan ESP32"
+                  onClick={() => setHwModalOpen(true)}
+                >
+                  <span
+                    className={`hw-dot ${bridgeOnline || serialConnected ? 'is-online' : ''}`}
+                    aria-hidden="true"
+                  />
+                </button>
+                <button
+                  type="button"
+                  className="qz-icon-btn"
+                  title="Layar Penuh"
+                  aria-label="Mode layar penuh"
+                  onClick={handleToggleFullscreen}
+                >
+                  [ ]
+                </button>
+                <button
+                  type="button"
+                  className="qz-exit-btn"
+                  onClick={handleLockSession}
+                >
+                  Ke Lobi
+                </button>
+              </div>
             </div>
 
-            <div className="mg-podium-versus">
-              <div className={`mg-podium-team team-a ${scoreA >= scoreB ? 'is-leading' : ''}`}>
-                <div className="mg-podium-team-head">
-                  <TeamMascotIcon team="A" size={24} />
-                  <span>{teamAName}</span>
+            {/* Center Victory Banner */}
+            <div className="qz-question-wrap">
+              <div className="qz-q-counter-pill qz-podium-crown-pill">
+                {scoreA === scoreB ? 'PODIUM AKHIR • SERI' : 'PODIUM JUARA PERTANDINGAN'}
+              </div>
+              <div className="qz-question-card qz-podium-hero-card">
+                <h1 className="qz-podium-winner-title">{winnerSummary}</h1>
+                <p className="qz-lobby-sub">
+                  Sesi <strong>{sessionName}</strong> ({currentKlaster.code}:{' '}
+                  {currentKlaster.shortTitle}) selesai dengan skor akhir{' '}
+                  <strong>
+                    {scoreA} vs {scoreB}
+                  </strong>
+                  .
+                </p>
+              </div>
+            </div>
+
+            {/* 3D Stepped Championship Podium Stage + Cheering Crowd Stadium */}
+            <div className="qz-stadium-podium-wrap">
+              {/* Spotlight Beams Behind Podium */}
+              <div className="qz-spotlight-beams" aria-hidden="true">
+                <span className="qz-beam qz-beam-left" />
+                <span className="qz-beam qz-beam-center" />
+                <span className="qz-beam qz-beam-right" />
+              </div>
+
+              {/* Two Stepped Podium Pillars (Tim A Left vs Tim B Right) */}
+              <div className="qz-stepped-podium-grid">
+                {/* PODIUM COLUMN TIM A (KIRI) */}
+                <div
+                  className={`qz-podium-column is-team-a ${
+                    scoreA > scoreB ? 'is-first-place' : scoreA === scoreB ? 'is-tied-first' : 'is-second-place'
+                  }`}
+                >
+                  {/* Champion Character & Trophy Standing ON TOP of the Pillar */}
+                  <div className="qz-podium-stage-top">
+                    {scoreA >= scoreB && (
+                      <div className="qz-trophy-crown-float" aria-hidden="true">
+                        <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
+                          <path
+                            d="M14 10H34V19C34 24.5228 29.5228 29 24 29C18.4772 29 14 24.5228 14 19V10Z"
+                            fill="#FACC15"
+                            stroke="#FEF08A"
+                            strokeWidth="2.5"
+                          />
+                          <path
+                            d="M14 13H8V17C8 20.3137 10.6863 23 14 23M34 13H40V17C40 20.3137 37.3137 23 34 23"
+                            stroke="#FACC15"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                          />
+                          <path d="M24 29V36M17 36H31" stroke="#FACC15" strokeWidth="3" strokeLinecap="round" />
+                          <circle cx="24" cy="18" r="3.5" fill="#92400E" />
+                        </svg>
+                      </div>
+                    )}
+
+                    <div className="qz-podium-avatar-badge team-a-avatar">
+                      <TeamMascotIcon team="A" size={34} />
+                    </div>
+
+                    <div className="qz-podium-team-banner">
+                      <span className="qz-podium-team-name">{teamAName}</span>
+                      <span className="qz-podium-team-pts">{scoreA} Poin</span>
+                    </div>
+                  </div>
+
+                  {/* Physical 3D Podium Block */}
+                  <div className="qz-podium-pedestal">
+                    <div className="qz-pedestal-ledge" />
+                    <div className="qz-pedestal-body">
+                      <div className="qz-pedestal-rank-seal">
+                        <span className="qz-seal-num">{scoreA >= scoreB ? '1' : '2'}</span>
+                        <span className="qz-seal-label">
+                          {scoreA > scoreB ? 'JUARA 1' : scoreA === scoreB ? 'JUARA BERSAMA' : 'RUNNER-UP'}
+                        </span>
+                      </div>
+
+                      <div className="qz-podium-stats-grid">
+                        <div className="qz-stat-box">
+                          <span className="qz-stat-val">
+                            {correctCountA}/{totalQuestions}
+                          </span>
+                          <span className="qz-stat-lbl">Benar</span>
+                        </div>
+                        <div className="qz-stat-box">
+                          <span className="qz-stat-val">{accuracyA}%</span>
+                          <span className="qz-stat-lbl">Akurasi</span>
+                        </div>
+                        <div className="qz-stat-box">
+                          <span className="qz-stat-val">{bestStreakA}x</span>
+                          <span className="qz-stat-lbl">Streak</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="mg-podium-score">{scoreA} Poin</div>
-                <div className="mg-podium-acc">
-                  {correctCountA} dari {totalQuestions} soal benar
+
+                {/* PODIUM COLUMN TIM B (KANAN) */}
+                <div
+                  className={`qz-podium-column is-team-b ${
+                    scoreB > scoreA ? 'is-first-place' : scoreA === scoreB ? 'is-tied-first' : 'is-second-place'
+                  }`}
+                >
+                  {/* Champion Character & Trophy Standing ON TOP of the Pillar */}
+                  <div className="qz-podium-stage-top">
+                    {scoreB >= scoreA && (
+                      <div className="qz-trophy-crown-float" aria-hidden="true">
+                        <svg width="46" height="46" viewBox="0 0 48 48" fill="none">
+                          <path
+                            d="M14 10H34V19C34 24.5228 29.5228 29 24 29C18.4772 29 14 24.5228 14 19V10Z"
+                            fill="#FACC15"
+                            stroke="#FEF08A"
+                            strokeWidth="2.5"
+                          />
+                          <path
+                            d="M14 13H8V17C8 20.3137 10.6863 23 14 23M34 13H40V17C40 20.3137 37.3137 23 34 23"
+                            stroke="#FACC15"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                          />
+                          <path d="M24 29V36M17 36H31" stroke="#FACC15" strokeWidth="3" strokeLinecap="round" />
+                          <circle cx="24" cy="18" r="3.5" fill="#92400E" />
+                        </svg>
+                      </div>
+                    )}
+
+                    <div className="qz-podium-avatar-badge team-b-avatar">
+                      <TeamMascotIcon team="B" size={34} />
+                    </div>
+
+                    <div className="qz-podium-team-banner">
+                      <span className="qz-podium-team-name">{teamBName}</span>
+                      <span className="qz-podium-team-pts">{scoreB} Poin</span>
+                    </div>
+                  </div>
+
+                  {/* Physical 3D Podium Block */}
+                  <div className="qz-podium-pedestal">
+                    <div className="qz-pedestal-ledge" />
+                    <div className="qz-pedestal-body">
+                      <div className="qz-pedestal-rank-seal">
+                        <span className="qz-seal-num">{scoreB >= scoreA ? '1' : '2'}</span>
+                        <span className="qz-seal-label">
+                          {scoreB > scoreA ? 'JUARA 1' : scoreA === scoreB ? 'JUARA BERSAMA' : 'RUNNER-UP'}
+                        </span>
+                      </div>
+
+                      <div className="qz-podium-stats-grid">
+                        <div className="qz-stat-box">
+                          <span className="qz-stat-val">
+                            {correctCountB}/{totalQuestions}
+                          </span>
+                          <span className="qz-stat-lbl">Benar</span>
+                        </div>
+                        <div className="qz-stat-box">
+                          <span className="qz-stat-val">{accuracyB}%</span>
+                          <span className="qz-stat-lbl">Akurasi</span>
+                        </div>
+                        <div className="qz-stat-box">
+                          <span className="qz-stat-val">{bestStreakB}x</span>
+                          <span className="qz-stat-lbl">Streak</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className={`mg-podium-team team-b ${scoreB >= scoreA ? 'is-leading' : ''}`}>
-                <div className="mg-podium-team-head">
-                  <TeamMascotIcon team="B" size={24} />
-                  <span>{teamBName}</span>
+              {/* Animated Cheering Audience / Crowd Pit in Front of the Podium */}
+              <div className="qz-cheering-crowd-pit" aria-label="Penonton bersorak merayakan">
+                {/* Floating Cheer Speech Bubbles from the Crowd */}
+                <div className="qz-crowd-chants" aria-hidden="true">
+                  <span className="qz-chant-bubble is-blue">
+                    {scoreA >= scoreB ? `HIDUP ${teamAName.toUpperCase()}!` : `SEMANGAT ${teamAName.toUpperCase()}!`}
+                  </span>
+                  <span className="qz-chant-bubble is-gold">HOREEE! LUAR BIASA!</span>
+                  <span className="qz-chant-bubble is-emerald">CEPAT TEPAT +100!</span>
+                  <span className="qz-chant-bubble is-gold">GGWP PERTANDINGAN SERU!</span>
+                  <span className="qz-chant-bubble is-orange">
+                    {scoreB >= scoreA ? `JUARA ${teamBName.toUpperCase()}!` : `MANTAP ${teamBName.toUpperCase()}!`}
+                  </span>
                 </div>
-                <div className="mg-podium-score">{scoreB} Poin</div>
-                <div className="mg-podium-acc">
-                  {correctCountB} dari {totalQuestions} soal benar
-                </div>
-              </div>
-            </div>
 
-            <div className="summary-actions-row">
-              <button type="button" className="btn btn-primary" onClick={handleStartSession}>
-                Main Lagi (Acak 10 Soal Baru)
-              </button>
-              <button type="button" className="btn btn-outline" onClick={handleLockSession}>
-                Ubah Pengaturan di Lobi
-              </button>
-            </div>
-
-            {history.length > 0 && (
-              <details className="mg-history-details">
-                <summary>Lihat Ringkasan {history.length} Soal</summary>
-                <div className="mg-history-list">
-                  {history.map((item, idx) => (
-                    <div key={`${item.questionId}-${idx}`} className="mg-history-item">
-                      <div className="mg-history-q">
-                        <strong>#{idx + 1}</strong> {item.questionText}
-                      </div>
-                      <div className="mg-history-meta">
-                        <span>Kunci: {item.correctLetter === 'A' ? 'Benar' : 'Salah'}</span>
-                        <span>
-                          {teamAName}: +{item.pointsA}
-                        </span>
-                        <span>
-                          {teamBName}: +{item.pointsB}
-                        </span>
-                      </div>
+                {/* Animated Crowd Silhouettes & Waving Spectators */}
+                <div className="qz-crowd-spectators" aria-hidden="true">
+                  {[
+                    { id: 1, tone: 'fan-a', delay: '0s' },
+                    { id: 2, tone: 'fan-gold', delay: '0.15s' },
+                    { id: 3, tone: 'fan-a', delay: '0.3s' },
+                    { id: 4, tone: 'fan-b', delay: '0.08s' },
+                    { id: 5, tone: 'fan-gold', delay: '0.24s' },
+                    { id: 6, tone: 'fan-a', delay: '0.12s' },
+                    { id: 7, tone: 'fan-gold', delay: '0.28s' },
+                    { id: 8, tone: 'fan-b', delay: '0.05s' },
+                    { id: 9, tone: 'fan-gold', delay: '0.2s' },
+                    { id: 10, tone: 'fan-a', delay: '0.34s' },
+                    { id: 11, tone: 'fan-b', delay: '0.14s' },
+                    { id: 12, tone: 'fan-gold', delay: '0.26s' },
+                    { id: 13, tone: 'fan-b', delay: '0.09s' },
+                    { id: 14, tone: 'fan-b', delay: '0.22s' }
+                  ].map((fan) => (
+                    <div
+                      key={fan.id}
+                      className={`qz-spectator ${fan.tone}`}
+                      style={{ animationDelay: fan.delay }}
+                    >
+                      <svg viewBox="0 0 44 54" width="40" height="48" fill="none">
+                        {/* Raised Cheering Left & Right Arms */}
+                        <path
+                          d="M12 28L4 12M32 28L40 12"
+                          stroke="currentColor"
+                          strokeWidth="4.5"
+                          strokeLinecap="round"
+                        />
+                        {/* Glowing Cheer Stick in Hand */}
+                        <circle cx="4" cy="10" r="3" fill="#FACC15" />
+                        <circle cx="40" cy="10" r="3" fill="#FACC15" />
+                        {/* Head */}
+                        <circle cx="22" cy="18" r="7.5" fill="currentColor" />
+                        {/* Happy Cheering Mouth */}
+                        <path
+                          d="M19 19.5C19 21.2 25 21.2 25 19.5"
+                          stroke="#120720"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                        />
+                        {/* Shoulders / Torso */}
+                        <path
+                          d="M11 48C11 35 15 27 22 27C29 27 33 35 33 48"
+                          fill="currentColor"
+                        />
+                      </svg>
                     </div>
                   ))}
                 </div>
-              </details>
+              </div>
+            </div>
+
+            {/* 10-Round Timeline & Expandable Question Review */}
+            {history.length > 0 && (
+              <div className="qz-podium-review-card">
+                <div className="qz-round-strip" aria-label="Rekap pemenang tiap nomor soal">
+                  {history.map((item, idx) => {
+                    const wonA = item.pointsA > 0;
+                    const wonB = item.pointsB > 0;
+                    const chipClass = wonA
+                      ? 'is-team-a'
+                      : wonB
+                        ? 'is-team-b'
+                        : 'is-no-point';
+                    const winnerTag = wonA
+                      ? teamAName
+                      : wonB
+                        ? teamBName
+                        : item.timedOut
+                          ? 'Habis'
+                          : 'Salah';
+                    return (
+                      <div
+                        key={`${item.questionId}-${idx}`}
+                        className={`qz-round-chip ${chipClass}`}
+                      >
+                        <span className="qz-round-num">#{idx + 1}</span>
+                        <span className="qz-round-tag">{winnerTag}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <details className="qz-history-details">
+                  <summary>Lihat Rincian &amp; Kunci Jawaban {history.length} Soal</summary>
+                  <div className="qz-history-list">
+                    {history.map((item, idx) => (
+                      <div key={`${item.questionId}-detail-${idx}`} className="qz-history-item">
+                        <div className="qz-history-q">
+                          <strong>#{idx + 1}</strong> {item.questionText}
+                        </div>
+                        <div className="qz-history-meta">
+                          <span className="qz-meta-key">
+                            Kunci: {item.correctLetter === 'A' ? 'Benar' : 'Salah'}
+                          </span>
+                          <span className={item.pointsA > 0 ? 'qz-meta-hit-a' : ''}>
+                            {teamAName}: +{item.pointsA}
+                          </span>
+                          <span className={item.pointsB > 0 ? 'qz-meta-hit-b' : ''}>
+                            {teamBName}: +{item.pointsB}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              </div>
             )}
 
-            <div className="sync-server-box">
-              <label htmlFor="remote-server-url" className="field-label">
-                Kirim Skor ke Server Leaderboard (kosongkan jika satu origin / lokal)
-              </label>
-              <div className="materi-toolbar" style={{ marginBottom: '0.75rem' }}>
-                <input
-                  id="remote-server-url"
-                  type="url"
-                  className="materi-search-input"
-                  placeholder="https://sipar.fragma.my.id"
-                  value={serverUrl}
-                  onChange={(e) => setServerUrl(e.target.value)}
-                />
+            {/* Bottom Podium Actions & Leaderboard Server Sync */}
+            <div className="qz-podium-footer-grid">
+              <div className="qz-sync-leaderboard-card">
+                <label htmlFor="remote-server-url" className="qz-field-label">
+                  Simpan &amp; Kirim Skor ke Server Leaderboard
+                </label>
+                <div className="qz-sync-row">
+                  <input
+                    id="remote-server-url"
+                    type="url"
+                    className="qz-arcade-input"
+                    placeholder="https://sipar.fragma.my.id"
+                    value={serverUrl}
+                    onChange={(e) => setServerUrl(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="qz-arcade-btn qz-btn-secondary"
+                    disabled={syncing}
+                    onClick={() => void handleSyncToServer()}
+                  >
+                    {syncing ? 'Mengirim...' : 'Kirim ke Leaderboard'}
+                  </button>
+                </div>
+                {syncNotice && <p className="qz-sync-notice">{syncNotice}</p>}
+              </div>
+
+              <div className="qz-podium-cta-group">
                 <button
                   type="button"
-                  className="btn btn-outline"
-                  disabled={syncing}
-                  onClick={() => void handleSyncToServer()}
+                  className="qz-arcade-btn qz-btn-outline"
+                  onClick={handleLockSession}
                 >
-                  {syncing ? 'Mengirim...' : 'Kirim Skor ke Leaderboard'}
+                  Ubah Pengaturan di Lobi
+                </button>
+                <button
+                  type="button"
+                  className="qz-arcade-btn qz-btn-launch"
+                  onClick={handleStartSession}
+                >
+                  Main Lagi (10 Soal Acak Baru) →
                 </button>
               </div>
-              {syncNotice && <p className="state-desc">{syncNotice}</p>}
             </div>
           </section>
         )}

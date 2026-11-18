@@ -30,13 +30,14 @@ const ScrollManager: React.FC = () => {
 };
 
 export const App: React.FC = () => {
-  const [hideChrome, setHideChrome] = useState<boolean>(false);
+  const [hideChrome, setHideChrome] = useState<boolean>(APP_MODE === 'local');
+  const showChrome = APP_MODE !== 'local' && !hideChrome;
 
   return (
     <BrowserRouter>
       <ScrollManager />
       <div className="app-shell">
-        {!hideChrome && (
+        {showChrome && (
           <>
             <a href="#beranda" className="skip-link">
               Lewati ke konten utama
@@ -58,7 +59,7 @@ export const App: React.FC = () => {
             <Route path="*" element={<LandingPage />} />
           </Routes>
         )}
-        {!hideChrome && <Footer appMode={APP_MODE} />}
+        {showChrome && <Footer appMode={APP_MODE} />}
       </div>
     </BrowserRouter>
   );
