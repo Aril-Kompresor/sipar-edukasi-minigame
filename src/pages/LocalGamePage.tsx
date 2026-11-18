@@ -137,6 +137,7 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const toastSeq = useRef(0);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const lastAdvanceAtRef = useRef<number>(0);
 
   const currentKlaster = KLASTER_DATA.find((k) => k.id === klasterId) || KLASTER_DATA[0];
   const remoteForKlaster = remoteQuestions.filter((q) => q.klasterId === klasterId);
@@ -228,15 +229,39 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
       } else {
         soundEngine.playWrong();
       }
+
+      // Immediately advance to the next question with zero delay
+      lastAdvanceAtRef.current = Date.now();
+      if (questionIdx < activeQuestions.length - 1) {
+        setQuestionIdx((prev) => prev + 1);
+        setChoiceA(null);
+        setChoiceB(null);
+        setEvaluated(false);
+        setTimedOutRound(false);
+        setTimeLeft(timerDuration);
+      } else {
+        setChoiceA(null);
+        setChoiceB(null);
+        setEvaluated(false);
+        setTimedOutRound(false);
+        soundEngine.playVictoryCheer();
+        setSessionState('finished');
+        appendLog('[Admin] Semua 10 soal acak selesai.');
+        addToast('Permainan selesai! Penonton bersorak di podium pemenang.', 'success');
+      }
     },
     [
+      activeQuestions.length,
+      addToast,
       appendLog,
       correctLetter,
       currentQuestion.id,
       currentQuestion.text,
       evaluated,
+      questionIdx,
       teamAName,
-      teamBName
+      teamBName,
+      timerDuration
     ]
   );
 
@@ -264,6 +289,7 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
         return;
       }
 
+      if (Date.now() - lastAdvanceAtRef.current < 300) return;
       if (evaluated || choiceA !== null || choiceB !== null) return;
 
       const labelText = choice === 'A' ? 'Benar' : 'Salah';
@@ -821,7 +847,7 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
               <div className="qz-lobby-ready-note">
                 <span>
                   Target: <strong>{currentKlaster.code} ({currentKlaster.shortTitle})</strong> •{' '}
-                  <strong>{timerDuration} Detik/Soal</strong> • Auto-Next 3 Detik
+                  <strong>{timerDuration} Detik/Soal</strong> • Auto-Next Langsung
                 </span>
               </div>
 
