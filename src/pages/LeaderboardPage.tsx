@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { KLASTER_DATA } from '../data/klasterData';
+import {
+  getKlasterLabel,
+  KLASTER_DATA,
+  UMUM_KLASTER_ID
+} from '../data/klasterData';
 import { fetchLeaderboard, LeaderboardEntry } from '../services/portalService';
 
 type LoadStatus = 'loading' | 'ready' | 'error';
@@ -54,6 +58,7 @@ export const LeaderboardPage: React.FC = () => {
                   {k.code}: {k.shortTitle}
                 </option>
               ))}
+              <option value={UMUM_KLASTER_ID}>Umum: Acak Klaster 1-5</option>
             </select>
             <button
               type="button"
@@ -115,12 +120,11 @@ export const LeaderboardPage: React.FC = () => {
               </thead>
               <tbody>
                 {filtered.map((entry, idx) => {
-                  const klaster = KLASTER_DATA.find((k) => k.id === entry.klasterId);
                   return (
                     <tr key={entry.id}>
                       <td className="rank-cell">#{idx + 1}</td>
                       <td>{entry.sessionName}</td>
-                      <td>{klaster ? klaster.code : `Klaster ${entry.klasterId}`}</td>
+                      <td>{getKlasterLabel(entry.klasterId)}</td>
                       <td>
                         <span className="team-a-color">{entry.teamAName}</span> ({entry.teamAScore}{' '}
                         poin, Lvl {entry.teamALevel})

@@ -14,7 +14,7 @@ dist-local-old-*/
 .env
 .env.local
 .env.*.local
-data/
+/data/
 uploads/
 *.part
 

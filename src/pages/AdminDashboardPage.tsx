@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { KLASTER_DATA } from '../data/klasterData';
+import { getKlasterLabel, KLASTER_DATA } from '../data/klasterData';
 import {
   AdminQuestion,
   deleteLeaderboardEntry,
@@ -752,7 +752,7 @@ export const AdminDashboardPage: React.FC = () => {
                   <div key={entry.id} className="admin-list-item">
                     <div className="admin-item-info">
                       <h3 className="admin-item-title">
-                        {entry.sessionName} (Klaster {entry.klasterId})
+                        {entry.sessionName} ({getKlasterLabel(entry.klasterId)})
                       </h3>
                       <p className="admin-item-url">
                         {entry.teamAName}: {entry.teamAScore} poin | {entry.teamBName}:{' '}

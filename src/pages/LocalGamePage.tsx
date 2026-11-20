@@ -1,5 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AbQuizQuestion, KLASTER_DATA } from '../data/klasterData';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AbQuizQuestion,
+  KLASTER_DATA,
+  KlasterInfo,
+  UMUM_KLASTER_ID
+} from '../data/klasterData';
 import {
   AdminQuestion,
   fetchQuestions,
@@ -139,8 +144,35 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
   const stageRef = useRef<HTMLDivElement | null>(null);
   const lastAdvanceAtRef = useRef<number>(0);
 
-  const currentKlaster = KLASTER_DATA.find((k) => k.id === klasterId) || KLASTER_DATA[0];
-  const remoteForKlaster = remoteQuestions.filter((q) => q.klasterId === klasterId);
+  const allLocalQuestions = useMemo(
+    () => KLASTER_DATA.flatMap((k) => k.questions),
+    []
+  );
+
+  const klasterOptions = useMemo<KlasterInfo[]>(
+    () => [
+      ...KLASTER_DATA,
+      {
+        id: UMUM_KLASTER_ID,
+        code: 'Umum',
+        title: 'Campuran Acak Klaster 1 sampai 5',
+        shortTitle: 'Acak Klaster 1-5',
+        summary: 'Mengambil soal secara acak dari Klaster 1 hingga Klaster 5.',
+        stageTheme: {
+          name: 'Campuran Semua Klaster',
+          subtitle: 'Stage Umum'
+        },
+        questions: allLocalQuestions
+      }
+    ],
+    [allLocalQuestions]
+  );
+
+  const isUmumSelected = klasterId === UMUM_KLASTER_ID;
+  const currentKlaster = klasterOptions.find((k) => k.id === klasterId) || klasterOptions[0];
+  const remoteForKlaster = isUmumSelected
+    ? remoteQuestions.filter((q) => q.klasterId >= 1 && q.klasterId <= 5)
+    : remoteQuestions.filter((q) => q.klasterId === klasterId);
   const activeQuestions =
     sessionQuestions.length > 0 ? sessionQuestions : currentKlaster.questions;
   const totalQuestions = activeQuestions.length || 1;
@@ -229,39 +261,15 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
       } else {
         soundEngine.playWrong();
       }
-
-      // Immediately advance to the next question with zero delay
-      lastAdvanceAtRef.current = Date.now();
-      if (questionIdx < activeQuestions.length - 1) {
-        setQuestionIdx((prev) => prev + 1);
-        setChoiceA(null);
-        setChoiceB(null);
-        setEvaluated(false);
-        setTimedOutRound(false);
-        setTimeLeft(timerDuration);
-      } else {
-        setChoiceA(null);
-        setChoiceB(null);
-        setEvaluated(false);
-        setTimedOutRound(false);
-        soundEngine.playVictoryCheer();
-        setSessionState('finished');
-        appendLog('[Admin] Semua 10 soal acak selesai.');
-        addToast('Permainan selesai! Penonton bersorak di podium pemenang.', 'success');
-      }
     },
     [
-      activeQuestions.length,
-      addToast,
       appendLog,
       correctLetter,
       currentQuestion.id,
       currentQuestion.text,
       evaluated,
-      questionIdx,
       teamAName,
-      teamBName,
-      timerDuration
+      teamBName
     ]
   );
 
@@ -396,6 +404,7 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
   };
 
   const handleNextQuestion = useCallback(() => {
+    lastAdvanceAtRef.current = Date.now();
     setAutoNextLeft(AUTO_NEXT_SECONDS);
     if (questionIdx < activeQuestions.length - 1) {
       soundEngine.playClick();
@@ -406,6 +415,10 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
       setTimedOutRound(false);
       setTimeLeft(timerDuration);
     } else {
+      setChoiceA(null);
+      setChoiceB(null);
+      setEvaluated(false);
+      setTimedOutRound(false);
       soundEngine.playVictoryCheer();
       setSessionState('finished');
       appendLog('[Admin] Semua 10 soal acak selesai.');
@@ -440,7 +453,9 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
       setQuestionSource(res.source);
       setSyncingQuestions(false);
       if (!silent) {
-        const countKlaster = res.questions.filter((q) => q.klasterId === klasterId).length;
+        const countKlaster = isUmumSelected
+          ? res.questions.filter((q) => q.klasterId >= 1 && q.klasterId <= 5).length
+          : res.questions.filter((q) => q.klasterId === klasterId).length;
         if (res.source === 'api') {
           addToast(
             `Sync berhasil: ${res.questions.length} total soal server (${countKlaster} soal di ${currentKlaster.code}).`,
@@ -453,7 +468,7 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
         }
       }
     },
-    [addToast, appendLog, currentKlaster.code, klasterId, serverUrl]
+    [addToast, appendLog, currentKlaster.code, isUmumSelected, klasterId, serverUrl]
   );
 
   useEffect(() => {
@@ -777,7 +792,7 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
               </section>
             </div>
 
-            {/* 5 Klaster Selection Grid (Tactile 3D Arcade Cards) */}
+            {/* Klaster Selection Grid (Klaster 1-5 + Umum) */}
             <div className="qz-klaster-section">
               <div className="qz-klaster-head">
                 <span className="qz-field-label">Pilih Klaster Pertandingan (10 Soal Acak)</span>
@@ -790,7 +805,7 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
               </div>
 
               <div className="qz-klaster-grid" role="radiogroup" aria-label="Pilih Klaster">
-                {KLASTER_DATA.map((k) => {
+                {klasterOptions.map((k) => {
                   const isSelected = k.id === klasterId;
                   return (
                     <button
@@ -847,7 +862,7 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
               <div className="qz-lobby-ready-note">
                 <span>
                   Target: <strong>{currentKlaster.code} ({currentKlaster.shortTitle})</strong> •{' '}
-                  <strong>{timerDuration} Detik/Soal</strong> • Auto-Next Langsung
+                  <strong>{timerDuration} Detik/Soal</strong> • Jeda Evaluasi 3 Detik
                 </span>
               </div>
 
@@ -989,11 +1004,13 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
                   >
                     <span className="qz-tile-key">[Q]</span>
                     <span className="qz-tile-label">Benar</span>
-                    {evaluated && correctLetter === 'A' && (
-                      <span className="qz-tile-badge">Kunci</span>
-                    )}
-                    {evaluated && choiceA === 'A' && (
-                      <span className="qz-tile-badge">Dipilih</span>
+                    {evaluated && (correctLetter === 'A' || choiceA === 'A') && (
+                      <span className="qz-tile-badges">
+                        {correctLetter === 'A' && (
+                          <span className="qz-tile-badge is-correct-badge">Jawaban Benar</span>
+                        )}
+                        {choiceA === 'A' && <span className="qz-tile-badge">Dipilih</span>}
+                      </span>
                     )}
                   </button>
 
@@ -1005,11 +1022,13 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
                   >
                     <span className="qz-tile-key">[W]</span>
                     <span className="qz-tile-label">Salah</span>
-                    {evaluated && correctLetter === 'B' && (
-                      <span className="qz-tile-badge">Kunci</span>
-                    )}
-                    {evaluated && choiceA === 'B' && (
-                      <span className="qz-tile-badge">Dipilih</span>
+                    {evaluated && (correctLetter === 'B' || choiceA === 'B') && (
+                      <span className="qz-tile-badges">
+                        {correctLetter === 'B' && (
+                          <span className="qz-tile-badge is-correct-badge">Jawaban Benar</span>
+                        )}
+                        {choiceA === 'B' && <span className="qz-tile-badge">Dipilih</span>}
+                      </span>
                     )}
                   </button>
                 </div>
@@ -1059,11 +1078,13 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
                   >
                     <span className="qz-tile-key">[O]</span>
                     <span className="qz-tile-label">Benar</span>
-                    {evaluated && correctLetter === 'A' && (
-                      <span className="qz-tile-badge">Kunci</span>
-                    )}
-                    {evaluated && choiceB === 'A' && (
-                      <span className="qz-tile-badge">Dipilih</span>
+                    {evaluated && (correctLetter === 'A' || choiceB === 'A') && (
+                      <span className="qz-tile-badges">
+                        {correctLetter === 'A' && (
+                          <span className="qz-tile-badge is-correct-badge">Jawaban Benar</span>
+                        )}
+                        {choiceB === 'A' && <span className="qz-tile-badge">Dipilih</span>}
+                      </span>
                     )}
                   </button>
 
@@ -1075,11 +1096,13 @@ export const LocalGamePage: React.FC<LocalGamePageProps> = ({ onPlayingChange })
                   >
                     <span className="qz-tile-key">[P]</span>
                     <span className="qz-tile-label">Salah</span>
-                    {evaluated && correctLetter === 'B' && (
-                      <span className="qz-tile-badge">Kunci</span>
-                    )}
-                    {evaluated && choiceB === 'B' && (
-                      <span className="qz-tile-badge">Dipilih</span>
+                    {evaluated && (correctLetter === 'B' || choiceB === 'B') && (
+                      <span className="qz-tile-badges">
+                        {correctLetter === 'B' && (
+                          <span className="qz-tile-badge is-correct-badge">Jawaban Benar</span>
+                        )}
+                        {choiceB === 'B' && <span className="qz-tile-badge">Dipilih</span>}
+                      </span>
                     )}
                   </button>
                 </div>

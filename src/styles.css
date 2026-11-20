@@ -4398,12 +4398,15 @@ kbd {
 
 .qz-answer-tile.is-correct-tile {
   outline: 4px solid #4ade80;
-  outline-offset: 2px;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 8px rgba(74, 222, 128, 0.28);
+  filter: brightness(1.1);
 }
 
 .qz-answer-tile.is-wrong-tile {
-  opacity: 0.7;
+  opacity: 0.72;
   outline: 3px solid #fda4af;
+  outline-offset: 2px;
 }
 
 .qz-tile-key {
@@ -4424,13 +4427,26 @@ kbd {
   font-weight: 800;
 }
 
+.qz-tile-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
 .qz-tile-badge {
   font-size: 0.72rem;
   font-weight: 800;
-  padding: 0.16rem 0.5rem;
+  padding: 0.18rem 0.52rem;
   border-radius: var(--radius-sm);
-  background-color: rgba(0, 0, 0, 0.35);
+  background-color: #120720;
   color: #fef08a;
+}
+
+.qz-tile-badge.is-correct-badge {
+  background-color: #4ade80;
+  color: #052e16;
 }
 
 .qz-vs-divider {
@@ -4798,9 +4814,15 @@ kbd {
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 960px) {
   .qz-klaster-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .qz-klaster-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }
 
@@ -4824,6 +4846,11 @@ kbd {
 .qz-klaster-tile:hover {
   background-color: #31164f;
   transform: translateY(-2px);
+}
+
+.qz-klaster-tile:focus-visible {
+  outline: 2px solid #facc15;
+  outline-offset: 2px;
 }
 
 .qz-klaster-tile.is-selected {
